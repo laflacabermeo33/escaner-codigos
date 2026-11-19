@@ -2,8 +2,9 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="color-scheme" content="light dark">
 <title>Escáner de códigos</title>
 <style>
   :root { --bg:#f5f6f8; --card:#fff; --txt:#1d2330; --muted:#6b7280; --acc:#2563eb; --ok:#16a34a; --err:#dc2626; --line:#d7dbe3; }
@@ -11,44 +12,53 @@
     :root { --bg:#0f1218; --card:#1a1f2a; --txt:#e8ebf1; --muted:#9aa3b2; --acc:#4f8cff; --ok:#22c55e; --err:#f87171; --line:#2e3646; }
   }
   * { box-sizing: border-box; }
-  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--txt); }
+  html, body { margin:0; padding:0; overflow-x:hidden; width:100%; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--txt); }
   main { max-width: 520px; margin: 0 auto; padding: 16px; }
   h1 { font-size: 20px; margin: 4px 0 12px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; }
-  #cam-wrap { position:relative; width:100%; aspect-ratio: 4/3; background:#000; border-radius:12px; overflow:hidden; display:none; }
-  #cam { width:100%; height:100%; object-fit:cover; }
-  .guide { position:absolute; left:10%; right:10%; top:42%; height:16%; border:2px solid #22c55e; border-radius:8px; box-shadow:0 0 0 9999px rgba(0,0,0,.35); pointer-events:none; }
   button { font: inherit; border:0; border-radius:12px; padding:14px 16px; font-size:16px; font-weight:600; cursor:pointer; width:100%; }
   .btn-main { background:var(--acc); color:#fff; }
-  .btn-sec { background:transparent; color:var(--acc); border:2px solid var(--acc); margin-top:8px; }
   .btn-save { background:var(--ok); color:#fff; margin-top:6px; }
   button:disabled { opacity:.55; cursor:default; }
   label { display:block; font-size:14px; color:var(--muted); margin: 10px 0 4px; }
-  input, select, textarea { width:100%; font: inherit; font-size:17px; padding:12px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--txt); }
+  input, textarea { width:100%; font: inherit; font-size:17px; padding:12px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--txt); }
   textarea { min-height:70px; resize:vertical; }
   .seg { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
-  .seg input { position:absolute; opacity:0; pointer-events:none; }
+  .seg input[type=radio] { display:none; }
   .seg label.opt { margin:0; padding:14px; text-align:center; border:2px solid var(--line); border-radius:12px; color:var(--txt); font-size:16px; font-weight:600; cursor:pointer; }
   .seg input:checked + label.opt { border-color:var(--acc); background:rgba(37,99,235,.12); color:var(--acc); }
   #msg { margin-top:10px; padding:12px; border-radius:10px; display:none; font-size:15px; }
   #msg.ok { display:block; background:rgba(22,163,74,.15); color:var(--ok); }
   #msg.err { display:block; background:rgba(220,38,38,.12); color:var(--err); }
   #msg.info { display:block; background:rgba(37,99,235,.12); color:var(--acc); }
-  .hint { font-size:13px; color:var(--muted); margin-top:6px; }
+  .hint { font-size:13px; color:var(--muted); margin:8px 0 0; }
+
+  /* Cámara a pantalla completa */
+  #cam-overlay { position:fixed; inset:0; background:#000; z-index:1000; display:none; }
+  #cam-overlay.open { display:block; }
+  #cam { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  #guide { position:absolute; left:6%; right:6%; top:34%; height:32%; border:3px solid #22c55e; border-radius:12px; box-shadow:0 0 0 9999px rgba(0,0,0,.35); pointer-events:none; }
+  #cam-status { position:absolute; left:0; right:0; top:calc(env(safe-area-inset-top) + 16px); text-align:center; color:#fff; font-size:17px; font-weight:600; text-shadow:0 1px 4px #000; padding:0 16px; }
+  #cam-bottom { position:absolute; left:0; right:0; bottom:0; padding:16px; padding-bottom:calc(env(safe-area-inset-bottom) + 16px); background:linear-gradient(transparent, rgba(0,0,0,.7)); }
+  #btn-close { background:#fff; color:#111; }
 </style>
 </head>
 <body>
+
+<div id="cam-overlay" aria-hidden="true">
+  <video id="cam" playsinline muted autoplay></video>
+  <div id="guide"></div>
+  <div id="cam-status">Apunta al código dentro del recuadro</div>
+  <div id="cam-bottom"><button id="btn-close" type="button">Cerrar cámara</button></div>
+</div>
+
 <main>
   <h1>Escáner de códigos</h1>
 
   <div class="card">
-    <div id="cam-wrap">
-      <video id="cam" playsinline muted></video>
-      <div class="guide"></div>
-    </div>
-    <button id="btn-cam" class="btn-main">Abrir cámara y escanear</button>
-    <button id="btn-stop" class="btn-sec" style="display:none">Cerrar cámara</button>
-    <p class="hint">Apunta al código de barras o Code 128. La cámara necesita permiso del navegador.</p>
+    <button id="btn-cam" class="btn-main" type="button">Abrir cámara y escanear</button>
+    <p class="hint">Se abre la cámara a pantalla completa. Apunta al código de barras o Code 128. El navegador pedirá permiso de cámara.</p>
   </div>
 
   <form id="form" class="card" autocomplete="off">
@@ -61,7 +71,7 @@
     </div>
 
     <label for="codigo">Código</label>
-    <input id="codigo" name="codigo" type="text" inputmode="text" placeholder="Escanea o escribe">
+    <input id="codigo" name="codigo" type="text" placeholder="Escanea o escribe">
 
     <label for="formato">Formato detectado</label>
     <input id="formato" name="formato" type="text" readonly placeholder="—">
@@ -90,7 +100,7 @@
 
   var $ = function (id) { return document.getElementById(id); };
   var reader = null;
-  var controls = null;
+  var stream = null;
 
   function msg(texto, tipo) {
     var m = $('msg');
@@ -98,22 +108,27 @@
     m.className = tipo || '';
   }
 
+  function estado(texto) { $('cam-status').textContent = texto; }
+
   function beep() {
     try { if (navigator.vibrate) navigator.vibrate(120); } catch (e) {}
     try {
-      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      var AC = window.AudioContext || window.webkitAudioContext;
+      var ctx = new AC();
       var o = ctx.createOscillator(); var g = ctx.createGain();
       o.connect(g); g.connect(ctx.destination); o.frequency.value = 1400; g.gain.value = 0.15;
       o.start(); setTimeout(function () { o.stop(); ctx.close(); }, 120);
     } catch (e) {}
   }
 
-  function detenerCamara() {
-    try { if (controls) { controls.stop(); controls = null; } } catch (e) {}
+  function cerrarCamara() {
     try { if (reader) { reader.reset(); } } catch (e) {}
-    $('cam-wrap').style.display = 'none';
-    $('btn-cam').style.display = '';
-    $('btn-stop').style.display = 'none';
+    reader = null;
+    if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+    var v = $('cam'); v.srcObject = null;
+    $('cam-overlay').classList.remove('open');
+    $('cam-overlay').setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
   }
 
   function abrirCamara() {
@@ -121,44 +136,63 @@
       msg('No se pudo cargar el lector de códigos. Revisa tu conexión y recarga la página.', 'err');
       return;
     }
-    var formatos = [
-      ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.CODE_39, ZXing.BarcodeFormat.CODE_93,
-      ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8, ZXing.BarcodeFormat.UPC_A,
-      ZXing.BarcodeFormat.UPC_E, ZXing.BarcodeFormat.ITF, ZXing.BarcodeFormat.QR_CODE,
-      ZXing.BarcodeFormat.DATA_MATRIX
-    ];
-    var hints = new Map();
-    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formatos);
-    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-    reader = new ZXing.BrowserMultiFormatReader(hints, 300);
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      msg('Este navegador no permite usar la cámara aquí. Abre la página con HTTPS o escribe el código a mano.', 'err');
+      return;
+    }
 
-    $('cam-wrap').style.display = 'block';
-    $('btn-cam').style.display = 'none';
-    $('btn-stop').style.display = '';
-    msg('Buscando código…', 'info');
+    $('cam-overlay').classList.add('open');
+    $('cam-overlay').setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    estado('Abriendo cámara…');
 
-    reader.decodeFromConstraints(
-      { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }, audio: false },
-      $('cam'),
-      function (result, err) {
+    navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      }
+    }).then(function (s) {
+      stream = s;
+      var v = $('cam');
+      v.setAttribute('playsinline', '');
+      v.muted = true;
+      v.srcObject = s;
+      return v.play().then(function () { return v; });
+    }).then(function (v) {
+      var formatos = [
+        ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.CODE_39, ZXing.BarcodeFormat.CODE_93,
+        ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8, ZXing.BarcodeFormat.UPC_A,
+        ZXing.BarcodeFormat.UPC_E, ZXing.BarcodeFormat.ITF, ZXing.BarcodeFormat.QR_CODE,
+        ZXing.BarcodeFormat.DATA_MATRIX
+      ];
+      var hints = new Map();
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formatos);
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+      reader = new ZXing.BrowserMultiFormatReader(hints, 200);
+      estado('Apunta al código dentro del recuadro');
+
+      reader.decodeFromVideoElement(v, function (result, err) {
         if (result) {
           $('codigo').value = result.getText();
           $('formato').value = String(result.getBarcodeFormat()).replace(/_/g, ' ');
           beep();
           msg('Código leído. Completa los datos y pulsa Guardar.', 'ok');
-          detenerCamara();
+          cerrarCamara();
         }
-      }
-    ).then(function (c) { controls = c; })
-     .catch(function (e) {
-        detenerCamara();
-        var txt = 'No se pudo abrir la cámara. Revisa el permiso del navegador (Ajustes > Safari/Chrome > Cámara) o escribe el código a mano.';
-        msg(txt, 'err');
       });
+    }).catch(function (e) {
+      cerrarCamara();
+      var permiso = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
+      msg(permiso
+        ? 'Permiso de cámara denegado. Actívalo en los ajustes del navegador y vuelve a intentarlo.'
+        : 'No se pudo abrir la cámara. Escribe el código a mano.', 'err');
+    });
   }
 
   $('btn-cam').addEventListener('click', abrirCamara);
-  $('btn-stop').addEventListener('click', detenerCamara);
+  $('btn-close').addEventListener('click', cerrarCamara);
 
   $('form').addEventListener('submit', function (ev) {
     ev.preventDefault();
@@ -191,20 +225,20 @@
     .then(function (res) {
       if (res && res.ok) {
         msg('Guardado en la hoja (fila ' + res.fila + ').', 'ok');
-        limpiarCodigo();
+        limpiarCampos();
       } else {
         msg('El servidor rechazó el envío: ' + ((res && res.error) || 'error desconocido'), 'err');
       }
     })
     .catch(function () {
       // Si el navegador bloquea la respuesta, el envío sí puede haber llegado.
-      fetch(URL_APPS_SCRIPT, {
+      return fetch(URL_APPS_SCRIPT, {
         method: 'POST', mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(datos)
       }).then(function () {
         msg('Enviado. No se pudo confirmar la respuesta; revisa la hoja.', 'info');
-        limpiarCodigo();
+        limpiarCampos();
       }).catch(function () {
         msg('No se pudo enviar. Revisa tu conexión e inténtalo de nuevo.', 'err');
       });
@@ -212,7 +246,7 @@
     .then(function () { btn.disabled = false; btn.textContent = 'Guardar'; });
   });
 
-  function limpiarCodigo() {
+  function limpiarCampos() {
     $('codigo').value = '';
     $('formato').value = '';
     $('cantidad').value = '';
