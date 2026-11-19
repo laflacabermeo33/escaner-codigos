@@ -88,7 +88,7 @@
     <button type="submit" id="btn-save" class="btn-save">Guardar</button>
     <div id="msg"></div>
   </form>
-  <p class="hint" style="text-align:center">Versión 5</p>
+  <p class="hint" style="text-align:center">Versión 6</p>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
@@ -165,7 +165,9 @@
 
   function encontrado(result) {
     $('codigo').value = result.getText();
-    $('formato').value = String(result.getBarcodeFormat()).replace(/_/g, ' ');
+    var fmt = result.getBarcodeFormat();
+    var nombre = Object.keys(ZXing.BarcodeFormat).filter(function (k) { return ZXing.BarcodeFormat[k] === fmt; })[0] || String(fmt);
+    $('formato').value = nombre.replace(/_/g, ' ');
     beep();
     msg('Código leído. Completa los datos y pulsa Guardar.', 'ok');
     cerrarCamara();
