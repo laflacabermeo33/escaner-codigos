@@ -47,7 +47,7 @@
 <body>
 
 <div id="cam-overlay" aria-hidden="true">
-  <video id="cam" playsinline muted autoplay></video>
+  <video id="cam" playsinline webkit-playsinline muted autoplay></video>
   <div id="guide"></div>
   <div id="cam-status">Apunta al código dentro del recuadro</div>
   <div id="cam-bottom"><button id="btn-close" type="button">Cerrar cámara</button></div>
@@ -88,16 +88,24 @@
     <button type="submit" id="btn-save" class="btn-save">Guardar</button>
     <div id="msg"></div>
   </form>
-  <p class="hint" style="text-align:center">Versión 6</p>
+  <p class="hint" style="text-align:center">Versión 7 (lector compatible con iPhone)</p>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script type="module">
+  // Lector compatible con iPhone (Safari y Chrome en iOS): ZXing en WebAssembly.
+  import { BarcodeDetector } from 'https://cdn.jsdelivr.net/npm/barcode-detector@3.2.4/pure/+esm';
+  window.LectorCodigos = BarcodeDetector;
+  // Precarga el motor para que la primera lectura sea rápida.
+  try { new BarcodeDetector({ formats: ['code_128'] }).detect(document.createElement('canvas')).catch(function () {}); } catch (e) {}
+</script>
 <script>
   // ======= CONFIGURACIÓN =======
   var URL_APPS_SCRIPT = 'https://script.google.com/macros/s/AKfycbyB9LXDFEJfl-ppHvGm6UGf3TSmaPLYFh_fIU-djggi19JRlFafEJgU3AAe6WHesyxv/exec';
   var TOKEN = 'esc-TK-7fQ2pW9xLm4RvB8sN3kZ';
   var HOJA = 'Escaneos';
   // =============================
+
+  var FORMATOS = ['code_128', 'code_39', 'code_93', 'codabar', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'itf', 'qr_code', 'data_matrix'];
 
   var $ = function (id) { return document.getElementById(id); };
   var stream = null;
@@ -133,51 +141,52 @@
     document.body.style.overflow = '';
   }
 
-  // Lee la cámara por cuadros: copia el video a un canvas y decodifica.
-  function bucleLectura(video, hints) {
-    var lector = new ZXing.MultiFormatReader();
-    lector.setHints(hints);
+  // Copia cada cuadro del video a un canvas y lo pasa al lector.
+  function bucleLectura(video) {
+    var lector = new window.LectorCodigos({ formats: FORMATOS });
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d', { willReadFrequently: true });
     leyendo = true;
 
     function cuadro() {
       if (!leyendo) return;
-      if (video.readyState >= 2 && video.videoWidth > 0) {
-        var escala = Math.min(1, 1280 / video.videoWidth);
-        canvas.width = Math.round(video.videoWidth * escala);
-        canvas.height = Math.round(video.videoHeight * escala);
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        try {
-          var fuente = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
-          var mapa = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(fuente));
-          var r = lector.decode(mapa);
-          encontrado(r);
-          return;
-        } catch (e) {
-          // Sin código en este cuadro: seguir.
-        }
-      }
-      timer = setTimeout(cuadro, 120);
+      if (video.readyState < 2 || !video.videoWidth) { timer = setTimeout(cuadro, 120); return; }
+      var escala = Math.min(1, 1280 / video.videoWidth);
+      canvas.width = Math.round(video.videoWidth * escala);
+      canvas.height = Math.round(video.videoHeight * escala);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      lector.detect(canvas).then(function (codigos) {
+        if (!leyendo) return;
+        if (codigos && codigos.length) { encontrado(codigos[0]); return; }
+        timer = setTimeout(cuadro, 120);
+      }).catch(function () {
+        if (leyendo) timer = setTimeout(cuadro, 200);
+      });
     }
     cuadro();
   }
 
-  function encontrado(result) {
-    $('codigo').value = result.getText();
-    var fmt = result.getBarcodeFormat();
-    var nombre = Object.keys(ZXing.BarcodeFormat).filter(function (k) { return ZXing.BarcodeFormat[k] === fmt; })[0] || String(fmt);
-    $('formato').value = nombre.replace(/_/g, ' ');
+  function encontrado(codigo) {
+    $('codigo').value = codigo.rawValue;
+    $('formato').value = String(codigo.format || '').toUpperCase().replace(/_/g, ' ');
     beep();
     msg('Código leído. Completa los datos y pulsa Guardar.', 'ok');
     cerrarCamara();
   }
 
+  // Espera a que el lector termine de cargar (máx. 10 s).
+  function esperarLector() {
+    return new Promise(function (ok, ko) {
+      var t0 = Date.now();
+      (function revisar() {
+        if (window.LectorCodigos) return ok();
+        if (Date.now() - t0 > 10000) return ko(new Error('lector'));
+        setTimeout(revisar, 100);
+      })();
+    });
+  }
+
   function abrirCamara() {
-    if (typeof ZXing === 'undefined') {
-      msg('No se pudo cargar el lector de códigos. Revisa tu conexión y recarga la página.', 'err');
-      return;
-    }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       msg('Este navegador no permite usar la cámara aquí. Abre la página con HTTPS o escribe el código a mano.', 'err');
       return;
@@ -188,6 +197,7 @@
     document.body.style.overflow = 'hidden';
     estado('Abriendo cámara…');
 
+    // getUserMedia se llama directo desde el toque (requisito de iPhone).
     navigator.mediaDevices.getUserMedia({
       audio: false,
       video: {
@@ -209,18 +219,17 @@
       v.srcObject = s;
       return v.play().then(function () { return v; });
     }).then(function (v) {
-      var formatos = [
-        ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.CODE_39, ZXing.BarcodeFormat.CODE_93,
-        ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8, ZXing.BarcodeFormat.UPC_A,
-        ZXing.BarcodeFormat.UPC_E, ZXing.BarcodeFormat.ITF, ZXing.BarcodeFormat.QR_CODE,
-        ZXing.BarcodeFormat.DATA_MATRIX
-      ];
-      var hints = new Map();
-      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formatos);
-      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+      estado('Cargando lector…');
+      return esperarLector().then(function () { return v; }, function () {
+        cerrarCamara();
+        msg('No se pudo cargar el lector de códigos. Revisa tu conexión y recarga la página.', 'err');
+        throw null;
+      });
+    }).then(function (v) {
       estado('Apunta al código dentro del recuadro');
-      bucleLectura(v, hints);
+      bucleLectura(v);
     }).catch(function (e) {
+      if (e === null) return;
       cerrarCamara();
       var permiso = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
       msg(permiso
