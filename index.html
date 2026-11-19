@@ -88,7 +88,7 @@
     <button type="submit" id="btn-save" class="btn-save">Guardar</button>
     <div id="msg"></div>
   </form>
-  <p class="hint" style="text-align:center">Versión 4</p>
+  <p class="hint" style="text-align:center">Versión 5</p>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
@@ -100,8 +100,9 @@
   // =============================
 
   var $ = function (id) { return document.getElementById(id); };
-  var reader = null;
   var stream = null;
+  var timer = null;
+  var leyendo = false;
 
   function msg(texto, tipo) {
     var m = $('msg');
@@ -123,13 +124,51 @@
   }
 
   function cerrarCamara() {
-    try { if (reader) { reader.reset(); } } catch (e) {}
-    reader = null;
+    leyendo = false;
+    if (timer) { clearTimeout(timer); timer = null; }
     if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
     var v = $('cam'); v.srcObject = null;
     $('cam-overlay').classList.remove('open');
     $('cam-overlay').setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
+  }
+
+  // Lee la cámara por cuadros: copia el video a un canvas y decodifica.
+  function bucleLectura(video, hints) {
+    var lector = new ZXing.MultiFormatReader();
+    lector.setHints(hints);
+    var canvas = document.createElement('canvas');
+    var ctx = canvas.getContext('2d', { willReadFrequently: true });
+    leyendo = true;
+
+    function cuadro() {
+      if (!leyendo) return;
+      if (video.readyState >= 2 && video.videoWidth > 0) {
+        var escala = Math.min(1, 1280 / video.videoWidth);
+        canvas.width = Math.round(video.videoWidth * escala);
+        canvas.height = Math.round(video.videoHeight * escala);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        try {
+          var fuente = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
+          var mapa = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(fuente));
+          var r = lector.decode(mapa);
+          encontrado(r);
+          return;
+        } catch (e) {
+          // Sin código en este cuadro: seguir.
+        }
+      }
+      timer = setTimeout(cuadro, 120);
+    }
+    cuadro();
+  }
+
+  function encontrado(result) {
+    $('codigo').value = result.getText();
+    $('formato').value = String(result.getBarcodeFormat()).replace(/_/g, ' ');
+    beep();
+    msg('Código leído. Completa los datos y pulsa Guardar.', 'ok');
+    cerrarCamara();
   }
 
   function abrirCamara() {
@@ -177,18 +216,8 @@
       var hints = new Map();
       hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formatos);
       hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-      reader = new ZXing.BrowserMultiFormatReader(hints, 200);
       estado('Apunta al código dentro del recuadro');
-
-      reader.decodeFromVideoElement(v, function (result, err) {
-        if (result) {
-          $('codigo').value = result.getText();
-          $('formato').value = String(result.getBarcodeFormat()).replace(/_/g, ' ');
-          beep();
-          msg('Código leído. Completa los datos y pulsa Guardar.', 'ok');
-          cerrarCamara();
-        }
-      });
+      bucleLectura(v, hints);
     }).catch(function (e) {
       cerrarCamara();
       var permiso = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
