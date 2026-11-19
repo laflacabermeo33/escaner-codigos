@@ -88,6 +88,7 @@
     <button type="submit" id="btn-save" class="btn-save">Guardar</button>
     <div id="msg"></div>
   </form>
+  <p class="hint" style="text-align:center">Versión 4</p>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
@@ -155,6 +156,12 @@
       }
     }).then(function (s) {
       stream = s;
+      try {
+        var tr = s.getVideoTracks()[0];
+        if (tr && tr.applyConstraints) {
+          tr.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function () {});
+        }
+      } catch (e) {}
       var v = $('cam');
       v.setAttribute('playsinline', '');
       v.muted = true;
